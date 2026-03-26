@@ -1,0 +1,234 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Serverless Dashboard</title>
+    <style>
+        :root {
+            --bg-color: #0f172a;
+            --card-bg: #1e293b;
+            --text-color: #f8fafc;
+            --text-muted: #94a3b8;
+            --primary: #3b82f6;
+            --danger: #ef4444;
+            --success: #22c55e;
+            --border: #334155;
+        }
+
+        body {
+            font-family: 'Inter', -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+            background-color: var(--bg-color);
+            color: var(--text-color);
+            margin: 0;
+            padding: 2rem;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+        }
+
+        h1 {
+            font-weight: 700;
+            background: linear-gradient(to right, #60a5fa, #c084fc);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            margin-bottom: 2rem;
+            letter-spacing: -0.05em;
+        }
+
+        .dashboard {
+            background-color: var(--card-bg);
+            border: 1px solid var(--border);
+            border-radius: 12px;
+            padding: 2rem;
+            width: 100%;
+            max-width: 900px;
+            box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.4);
+        }
+
+        .controls {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 1.5rem;
+        }
+
+        button.danger {
+            background-color: var(--danger);
+            color: white;
+            border: none;
+            padding: 0.5rem 1rem;
+            border-radius: 6px;
+            cursor: pointer;
+            font-weight: 600;
+            transition: opacity 0.2s, transform 0.1s;
+        }
+        button.danger:hover { opacity: 0.9; }
+        button.danger:active { transform: scale(0.98); }
+
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            margin-top: 1rem;
+        }
+
+        th, td {
+            text-align: left;
+            padding: 1rem;
+            border-bottom: 1px solid var(--border);
+        }
+
+        th {
+            color: var(--text-muted);
+            font-weight: 500;
+            font-size: 0.875rem;
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
+        }
+
+        tr:hover td {
+            background-color: rgba(255, 255, 255, 0.02);
+        }
+
+        .status {
+            display: inline-flex;
+            align-items: center;
+            gap: 0.5rem;
+            padding: 0.25rem 0.75rem;
+            border-radius: 999px;
+            font-size: 0.875rem;
+            font-weight: 500;
+        }
+
+        .status.ok {
+            background-color: rgba(34, 197, 94, 0.1);
+            color: var(--success);
+        }
+
+        .status.alert {
+            background-color: rgba(239, 68, 68, 0.1);
+            color: var(--danger);
+        }
+        
+        .metric-pill {
+            display: inline-block;
+            background-color: rgba(59, 130, 246, 0.15);
+            padding: 2px 6px;
+            border-radius: 4px;
+            margin: 2px;
+            font-size: 0.8rem;
+            color: #93c5fd;
+        }
+
+        audio {
+            margin-top: 1rem;
+            width: 100%;
+            border-radius: 8px;
+        }
+    </style>
+</head>
+<body>
+    <h1>System Status Dashboard</h1>
+    
+    <div class="dashboard">
+        <div class="controls">
+            <h2 style="margin: 0; font-size: 1.25rem;">Live Telemetry & Alerts</h2>
+            <div>
+                <span style="color: var(--text-muted); font-size: 0.9rem;">Auto-refreshing every 5s 🟢</span>
+            </div>
+        </div>
+
+        <audio id="audioPlayer" controls style="display: none;"></audio>
+
+        <table>
+            <thead>
+                <tr>
+                    <th>Device ID</th>
+                    <th>Combined Metrics</th>
+                    <th>Time</th>
+                    <th>Status</th>
+                </tr>
+            </thead>
+            <tbody id="tableBody">
+                <tr><td colspan="4" style="text-align:center; color: var(--text-muted);">Fetching...</td></tr>
+            </tbody>
+        </table>
+    </div>
+
+    <script src="config.js"></script>
+    <script>
+        const API_URL = window.ENV.API_URL.replace(/\/$/, '');
+
+        async function fetchHistory() {
+            try {
+                const response = await fetch(`${API_URL}/metrics`);
+                const data = await response.json();
+                
+                const tbody = document.getElementById('tableBody');
+                tbody.innerHTML = '';
+                
+                if (data.history && data.history.length > 0) {
+                    data.history.forEach(item => {
+                        const tr = document.createElement('tr');
+                        const statusClass = item.is_alert ? 'alert' : 'ok';
+                        const statusText = item.is_alert ? 'Alert' : 'Normal';
+                        const time = new Date(item.timestamp).toLocaleTimeString();
+                        
+                        // Parse the metrics json
+                        let metricsHtml = '';
+                        Object.keys(item.metrics).forEach(k => {
+                            metricsHtml += `<span class="metric-pill">${k}: ${item.metrics[k]}</span>`;
+                        });
+                        
+                        let actionHtml = '';
+                        if (item.is_alert) {
+                            actionHtml = `<button class="danger" style="margin-left: 10px; padding: 0.2rem 0.5rem; font-size: 0.8rem;" onclick="listenToAlert('${item.device_id}', '${item.timestamp}')">🔊 Play</button>`;
+                        }
+                        
+                        tr.innerHTML = `
+                            <td><strong>${item.device_id}</strong></td>
+                            <td>${metricsHtml}</td>
+                            <td style="color: var(--text-muted)">${time}</td>
+                            <td>
+                                <span class="status ${statusClass}">${statusText}</span>
+                                ${actionHtml}
+                            </td>
+                        `;
+                        tbody.appendChild(tr);
+                    });
+                } else {
+                    tbody.innerHTML = '<tr><td colspan="4" style="text-align:center; color: var(--text-muted);">No telemetry history found</td></tr>';
+                }
+            } catch (err) {
+                console.error('Error fetching data:', err);
+            }
+        }
+
+        async function listenToAlert(deviceId, timestamp) {
+            const player = document.getElementById('audioPlayer');
+            player.style.display = 'none';
+
+            try {
+                const url = `${API_URL}/alerts/${deviceId}/audio?time=${encodeURIComponent(timestamp)}`;
+                const response = await fetch(url);
+                const data = await response.json();
+                
+                if (response.ok && data.audio_url) {
+                    player.src = data.audio_url;
+                    player.style.display = 'block';
+                    player.play();
+                } else {
+                    alert('Could not generate audio: ' + (data.message || 'Unknown error'));
+                }
+            } catch (err) {
+                alert('Error: ' + err.message);
+            }
+        }
+
+        window.onload = () => {
+            fetchHistory();
+            setInterval(fetchHistory, 5000);
+        };
+    </script>
+</body>
+</html>

@@ -1,0 +1,2 @@
+prefix      = "your-name-and-variant"
+alert_email = "your-email@example.com"
